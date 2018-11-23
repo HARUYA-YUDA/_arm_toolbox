@@ -64,6 +64,8 @@ void Arm::ik_Callback(const geometry_msgs::Point& data)
     std::vector<double> cur_q = readAll();     // Present Joint State
     std::vector<double> q;                     // Goal Joint State
     Vector3d goal;                             // Goal End Effector Position
+
+    int time = 5; // robotic arm move for 5 seconds
   
     get_fk();
     q.resize(LINK_NUM);
@@ -85,7 +87,8 @@ void Arm::ik_Callback(const geometry_msgs::Point& data)
         std::cout << std::setw(28) << "Target joint state [deg]: ";
         print_rad2deg(q);
   
-        armPos(q);
+//        armPos(q);
+        writeAll(q, time);
     }
     else {
         std::cout << "IK Fail." << std::endl;
