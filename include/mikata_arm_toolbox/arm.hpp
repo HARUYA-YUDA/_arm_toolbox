@@ -1,11 +1,13 @@
 #ifndef ARM_HPP
 #define ARM_HPP
 
+#include <cmath>
 #include "ros/ros.h"
 #include "std_msgs/String.h"
 #include "sensor_msgs/JointState.h"
 #include "/home/demulab/catkin_ws/devel/include/mikata_arm_msgs/dxl_double.h"
 #include "mikata_arm_toolbox/kinematics.h"
+//#include "../src/kinematics.cpp"
 
 #include <stdlib.h>
 #include <vector>
@@ -22,8 +24,8 @@ public:
   void armPos(std::vector<double> value);
   float *armPos();
   bool moveCheck();
-  void setChain();
-  Eigen::MatrixXd calcJacobian();
+//  void setChain();
+//  Eigen::MatrixXd calcJacobian();
 
 private:
   bool armMove;
@@ -74,11 +76,11 @@ void Arm::armCallback(const sensor_msgs::JointState::ConstPtr& msg)
 void Arm::ik_Callback(const geometry_msgs::Point& data)
 {
     Vector3d goal_pos; // Goal End Effector Position
-
     // Get goal position 
     goal_pos[0] = data.x;
     goal_pos[1] = data.y;
     goal_pos[2] = data.z;
+    setChain();
 
     // Solve Inverse kinematic
     /* flow 
@@ -96,24 +98,22 @@ void Arm::ik_Callback(const geometry_msgs::Point& data)
      ****************************
     */
     VectorXd pos_diff(6);        // Difference of Actual Position and Goal Position
-    std::vector<double> q;       // Actual Joint State
-    int count=0;                 // Counter for executed times
-  
     pos_diff << 0,0,0,0,0,0;
+
+    std::vector<double> q;       // Actual Joint State
     for(int i=0; i<LINK_NUM; i++) q.push_back(chain[i].getAngle());
-    armPos(q);
+
+    solveFK(q); 
   
     std::cout << "Calculating" << std::endl;
-    
-    while( ((chain[LINK_NUM].getPos() - goal_pos).norm() > IK_THRESHOLD) && count < LIMIT_TIMES) {
+
+    int norm = 999;
+    int count = 0;                 // Counter for executed times
+    while( ((chain[LINK_NUM].getPos() - goal_pos).norm() > IK_THRESHOLD) && count < LIMIT_TIMES && ros::ok()) {
         
         pos_diff.head(3) = goal_pos - chain[LINK_NUM].getPos();
-  
-  cout << setw(53) << "------------------------------------";
-  cout << endl << endl;
+
         MatrixXd J = calcJacobian();
-  cout << setw(53) << "------------------------------------";
-  cout << endl << endl;
         MatrixXd J_star = (J.transpose() * J).inverse() * J.transpose();
         Vector4d angle_diff;    // Joint State correction factor
   
@@ -122,21 +122,36 @@ void Arm::ik_Callback(const geometry_msgs::Point& data)
   
         // Calculate by Jacobian Transpose
         //angle_diff= IK_GAIN * calcJacobian().transpose() * pos_diff;
-        
-        for(int i=0; i<LINK_NUM; i++) {
+        cout << setw(53) << "I have an idea";
+        cout << endl << endl;
+        int i = 0;
+        while(i < LINK_NUM && ros::ok()){
           q[i] += angle_diff(i);
-          while (q[i] >= M_PI) q[i]-=2*M_PI;
-          while (q[i] < -M_PI) q[i] += 2*M_PI;
+          // q%pi 
+          double num = q[i];
+          double a = fmod(num, M_PI);
+          q[i] = a;
+          
+          while (q[i] >= M_PI && ros::ok()) {
+              q[i]-=2*M_PI;
+              cout << "?";
+          }
+          while (q[i] < -M_PI && ros::ok()) {
+              q[i] += 2*M_PI;
+              cout << "!";
+          }
           if (q[i] > chain[i].getMaxAngle()) q[i] = chain[i].getMaxAngle();
           if (q[i] < chain[i].getMinAngle()) q[i] = chain[i].getMinAngle();
+        cout << setw(3) << i+1;
+        i ++;
         }
+
   
-        armPos(q);    // Set new Joint State and new End Effector Position
-  
+        solveFK(q);    // Set new Joint State and new End Effector Position
         if(count%1000==0) std::cout << "." << std::endl;;
         count++;
     }
-  
+    armPos(q);    // Set new Joint State and new End Effector Position
     std::cout << std::endl;
     if (count == LIMIT_TIMES) std::cout << "IK Fail." << std::endl; // Calculation fails to converge
     else armPos(q);
@@ -166,6 +181,7 @@ void Arm::cycle(){
   }
 }
 
+/*
 void Arm::setChain()        // Set basic parameters for DYNAMIXEL Mikata Arm 4DOF
 {
   chain[0].setChildPos(0.0, 0.0, 76.1);
@@ -195,10 +211,12 @@ void Arm::setChain()        // Set basic parameters for DYNAMIXEL Mikata Arm 4DO
   
   chain[0].setPos(0.0, 0.0, 0.0);
 }
+*/
 
+/*
 Eigen::MatrixXd Arm::calcJacobian()        // Calculate base Jacobian
 {
-  Eigen::MatrixXd J;
+  MatrixXd J;
 
   for(int i=0; i<LINK_NUM; i++) {
     VectorXd col(6);
@@ -212,5 +230,5 @@ Eigen::MatrixXd Arm::calcJacobian()        // Calculate base Jacobian
 
   return J;
 }
-
+*/
 #endif // ARM_HPP
